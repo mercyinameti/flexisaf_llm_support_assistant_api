@@ -31,3 +31,33 @@ Real error details never reach the client. They are written only to `logs.jsonl`
 - A 503 after a wrong key stops after one attempt, because authentication errors are not retried.
 - A 503 after a timeout makes six attempts: three on the main model, then three on the backup model.
 - Test 8 is not tested. Quota has not run out.
+
+
+## Log evidence
+
+These lines were copied from `logs.jsonl`. The file itself is kept out of the repo because it holds user questions.
+
+Successful request (200):
+
+```json
+{"path": "/ask", "status": 200, "response_ms": 1258, "model": "gemini-3.5-flash-lite", "tokens": 39, "attempts": 1, "input_tokens": 13, "output_tokens": 26, "timestamp": "2026-11-03T09:53:13.973989+00:00"}
+```
+
+Validation failure (422, Gemini not called):
+
+```json
+{"path": "/ask", "status": 422, "response_ms": 1, "model": null, "tokens": null, "attempts": null, "input_tokens": null, "output_tokens": null, "timestamp": "2026-11-03T09:53:14.460124+00:00"}
+```
+
+Wrong API key (503, 1 attempt):
+
+```json
+{"path": "/ask", "status": 503, "response_ms": 601, "model": null, "tokens": null, "attempts": 1, "input_tokens": null, "output_tokens": null, "timestamp": "2026-11-03T09:55:47.351117+00:00"}
+```
+
+Forced timeout (503, 6 attempts). The error line comes first, then the request line:
+
+```json
+{"error": "ConnectTimeout: timed out", "timestamp": "2026-11-03T10:06:14.155274+00:00"}
+{"path": "/ask", "status": 503, "response_ms": 6131, "model": null, "tokens": null, "attempts": 6, "input_tokens": null, "output_tokens": null, "timestamp": "2026-11-03T10:06:14.155274+00:00"}
+```
