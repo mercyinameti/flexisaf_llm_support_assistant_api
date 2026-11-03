@@ -92,3 +92,42 @@
 - What: the error handlers in `/ask` record the attempt count before raising the 503 or 429. The real error is written to the log, and the client still gets the safe message.
 - Test: a normal request logged `"attempts": 1`. A forced timeout logged the `ConnectTimeout` error and `"attempts": 6`, showing three tries on each model.
 - Note: the log has a `model` value only when a reply succeeds. A failed request shows `null`.
+
+### Step 20: Split token counts in the log
+Gemini reports total, prompt (input), and candidate (output) tokens. We logged input and output separately, because they have different prices. Output is calculated as total minus input, so it includes thinking tokens, which Gemini bills as output.
+Concept: a log that records only totals can't tell you what something cost.
+
+### Step 21: Cost report
+Wrote `make_cost_report.py`. It reads `logs.jsonl`, applies paid rates per 1,000,000 tokens, and writes `cost_report.csv` with a totals row. Free-tier cost is $0.00 by definition.
+Rates were taken from the Gemini Developer API pricing page on 3 November 2026: $0.30 input and $2.50 output for `gemini-3.5-flash-lite`, and $0.25 input and $1.50 output for `gemini-3.1-flash-lite`.
+Concept: the script reads the log and writes a report, and it never changes the log.
+
+### Step 22: Sample client
+Wrote `client.py`, which sends a good request and an empty question. The first version printed the label "Successful request" even on a 503, so it looked like a pass when it was a failure. Fixed by giving each test an expected status and printing PASS or FAIL.
+Concept: a test should compare the result with a stated expectation, not just print what happened.
+
+### Step 23: Failure tests
+Wrote `failure_tests.py`, which sends four bad requests: empty question, missing field, malformed JSON, and a 2,001-character question. All four returned 422. Each one was rejected by validation before the model was called.
+
+### Step 24: Wrong key and forced timeout
+These two tests need changes to `.env` or `llm.py`, so they are run by hand.
+- Wrong key: the server still used the old key after editing `.env`. `.env` is read only at startup, so the server must be restarted. Result: 503, 1 attempt.
+- Forced timeout: set `timeout=1`, restarted, ran the client. Result: 503, 6 attempts, which is three tries on the main model plus three on the backup. Then restored `timeout=20000`.
+
+### Step 25: Evidence and docs
+Recorded every test in `FAILURE_EVIDENCE.md`. Exported the API schema as `openapi.json` from `/openapi.json`. Pinned package versions in `requirements.txt` from `pip show`. Wrote `README.md`.
+
+### Step 26: Git
+Problems and fixes:
+- The folder was inside a Git repo for the Windows user folder (`C:\Users\HP`). `git init` inside the project folder created a separate repo, so commits go to the project only.
+- `git status` before the first commit confirmed `.env`, `logs.jsonl`, `.venv/`, and `__pycache__/` were not staged.
+- The first remote address used the wrong repo name. Check the name in the URL before pushing.
+
+Result: 16 files pushed to `main` at `mercyinameti/flexisaf_llm_support_assistant_api`.
+
+### Lessons for a rebuild
+- Put Gemini calls in one file (`llm.py`), so retries, timeouts, and fallback are in one place.
+- Retry only temporary errors. A wrong key or bad request should fail at once.
+- Count attempts with a plain counter inside the function that makes the call. Tenacity's statistics were unreliable for this.
+- Validation errors (422) never reach the model, so they cost nothing.
+- The attempt counter is global, so concurrent requests can mix their counts. This is listed as a limit in the README.
